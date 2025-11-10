@@ -28,12 +28,24 @@ if "data" not in st.session_state:
 data = st.session_state["data"]
 
 # -----------------------------
+# 🏢 EXTRA DATAFRAME FOR MERGE
+# -----------------------------
+# This could come from another source (e.g., CSV, DB)
+department_data = pd.DataFrame({
+    "EMPLOYEE_ID": [101, 102, 103, 104, 105, 106],
+    "DEPARTMENT": ["Analytics", "Research", "Development", "HR", "Engineering", "AI Lab"]
+})
+
+# Merge employee data with department info
+merged_data = pd.merge(data, department_data, on="EMPLOYEE_ID", how="left")
+
+# -----------------------------
 # 🏠 SIDEBAR FILTERS
 # -----------------------------
 st.sidebar.header("🔍 Filter Options")
 
-roles = st.sidebar.multiselect("Select Job Role(s):", data["JOB_ROLE"].unique())
-filtered_data = data.copy()
+roles = st.sidebar.multiselect("Select Job Role(s):", merged_data["JOB_ROLE"].unique())
+filtered_data = merged_data.copy()
 if roles:
     filtered_data = filtered_data[filtered_data["JOB_ROLE"].isin(roles)]
 
@@ -53,11 +65,11 @@ with st.sidebar.form("add_employee_form", clear_on_submit=True):
     job_role = st.text_input("Job Role")
     salary = st.number_input("Salary (₹)", min_value=0, step=1000)
     experience = st.number_input("Experience (Years)", min_value=0, step=1)
+    dept = st.text_input("Department Name")
     add_button = st.form_submit_button("Add Employee")
 
     if add_button:
         if name and job_role:
-            # check for duplicates
             if emp_id in st.session_state["data"]["EMPLOYEE_ID"].values:
                 st.warning("⚠️ Employee ID already exists! Use update section to modify.")
             else:
@@ -68,11 +80,19 @@ with st.sidebar.form("add_employee_form", clear_on_submit=True):
                     "SALARY": [salary],
                     "EXPERIENCE": [experience]
                 })
-                st.session_state["data"] = pd.concat(
-                    [st.session_state["data"], new_entry],
-                    ignore_index=True
-                )
+                new_dept = pd.DataFrame({
+                    "EMPLOYEE_ID": [emp_id],
+                    "DEPARTMENT": [dept if dept else "Not Assigned"]
+                })
+
+                # Update both datasets and merge
+                st.session_state["data"] = pd.concat([st.session_state["data"], new_entry], ignore_index=True)
+                department_data = pd.concat([department_data, new_dept], ignore_index=True)
+
                 st.success(f"✅ Employee '{name}' added successfully!")
+
+                # Update merged view
+                merged_data = pd.merge(st.session_state["data"], department_data, on="EMPLOYEE_ID", how="left")
         else:
             st.warning("⚠️ Please fill all required fields (Name and Job Role).")
 
@@ -108,20 +128,12 @@ with st.sidebar.form("update_employee_form", clear_on_submit=True):
         ] = [new_name.upper(), new_role.title(), new_salary, new_exp]
         st.success(f"✅ Employee ID {emp_to_update} updated successfully!")
 
-data = st.session_state["data"]
-filtered_data = data[
-    (data["EXPERIENCE"] >= min_exp) & (data["EXPERIENCE"] <= max_exp)
-]
-if roles:
-    filtered_data = filtered_data[filtered_data["JOB_ROLE"].isin(roles)]
-
 # -----------------------------
 # 📊 DASHBOARD METRICS
 # -----------------------------
 st.title("💼 Employee Salary & Job Role Dashboard")
 
 col1, col2, col3 = st.columns(3)
-
 avg_salary = filtered_data["SALARY"].mean()
 max_salary = filtered_data["SALARY"].max()
 min_salary = filtered_data["SALARY"].min()
@@ -131,13 +143,13 @@ col2.metric("Highest Salary", f"₹{max_salary:,.0f}" if not np.isnan(max_salary
 col3.metric("Lowest Salary", f"₹{min_salary:,.0f}" if not np.isnan(min_salary) else "N/A")
 
 # -----------------------------
-# 📋 DISPLAY DATA
+# 📋 DISPLAY MERGED DATA
 # -----------------------------
-st.subheader("📋 Employee Data")
+st.subheader("📋 Employee Data (with Department)")
 st.dataframe(filtered_data, use_container_width=True)
 
 # -----------------------------
-# 📈 GROUP ANALYSIS
+# 📈 ANALYSIS & VISUALS
 # -----------------------------
 if not filtered_data.empty:
     st.subheader("📊 Average Salary by Job Role")
@@ -148,15 +160,10 @@ if not filtered_data.empty:
     )
     st.bar_chart(role_avg_salary)
 
-# -----------------------------
-# 🧠 CORRELATION ANALYSIS
-# -----------------------------
 if len(filtered_data) > 1:
     correlation = filtered_data["SALARY"].corr(filtered_data["EXPERIENCE"])
     st.subheader("📈 Correlation between Salary and Experience")
     st.write(f"**Correlation Value:** {correlation:.2f}")
-else:
-    st.info("Not enough data for correlation analysis.")
 
 # -----------------------------
 # 🏅 TOP EMPLOYEE
